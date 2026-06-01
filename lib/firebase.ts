@@ -2,13 +2,14 @@ import { initializeApp } from 'firebase/app'
 import { getDatabase } from 'firebase/database'
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  databaseURL: process.env.NEXT_PUBLIC_FIREBASE_DATABASE_URL,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: 'AIzaSyCv8zkwmHNg-LvL9Hp35N_gHDNc1uFw7II',
+  authDomain: 'health-37caa.firebaseapp.com',
+  databaseURL: 'https://health-37caa-default-rtdb.firebaseio.com',
+  projectId: 'health-37caa',
+  storageBucket: 'health-37caa.firebasestorage.app',
+  messagingSenderId: '176669098529',
+  appId: '1:176669098529:web:ba750b27281d43bf749960',
+  measurementId: 'G-ZLFQE8WQ5N'
 }
 
 const app = initializeApp(firebaseConfig)
