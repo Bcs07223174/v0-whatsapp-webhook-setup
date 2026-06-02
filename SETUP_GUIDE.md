@@ -66,11 +66,49 @@ This is a reminder about your appointment:
 Please arrive 10 minutes early. Reply "CONFIRM" to confirm your appointment.
 ```
 
+### 5.1 **Template Test Payload**
+
+Use the approved active template `dfcgvhjk` when testing the send route:
+
+```bash
+curl -X POST "http://localhost:3000/api/send-whatsapp" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "to": "923267564405",
+    "phoneNumberId": "286906287843537",
+    "templateName": "dfcgvhjk",
+    "templateLanguage": "en_US"
+  }'
+```
+
+Expected success response:
+
+```json
+{
+  "success": true,
+  "wamid": "wamid..."
+}
+```
+
+If you later use a template with placeholders, include `templateParameters` in the request body and make sure the number of parameters matches the template definition.
+
+### 5.2 **Status Flow**
+
+WhatsApp message tracking now follows this lifecycle:
+
+```text
+accepted → sent → delivered → read
+```
+
+If a message fails, the webhook updates the saved record to `failed` and stores any available error code, title, and message.
+
 ### 6. **Features**
 
 ✅ Automatic appointment list from Firebase
 ✅ Add/update patient phone numbers
 ✅ Send WhatsApp reminders with one click
+✅ Save `wamid` for each accepted message
+✅ Track delivery status changes from webhook events
 ✅ Track message delivery status
 ✅ Shows sent timestamp
 ✅ Handle failed messages

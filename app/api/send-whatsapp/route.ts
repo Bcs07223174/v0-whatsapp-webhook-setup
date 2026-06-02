@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+import {
+  saveWhatsAppMessageRecord,
+} from '@/lib/whatsapp-database'
+import { WhatsAppSendResponse } from '@/lib/whatsapp-types'
+
 const WHATSAPP_API_URL = 'https://graph.facebook.com/v25.0'
-const DEFAULT_WHATSAPP_TEMPLATE_NAME = 'gdjbd'
-const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL || 'https://health-37caa-default-rtdb.firebaseio.com'
+const DEFAULT_WHATSAPP_TEMPLATE_NAME = 'dfcgvhjk'
 
 function readEnvValue(name: string) {
   return process.env[name]?.trim()
@@ -60,7 +64,6 @@ export async function POST(request: NextRequest) {
       readEnvValue('WHATSAPP_TEMPLATE_LANGUAGE') ||
       'en_US'
 
-    // Check if env vars are set
     if (!accessToken || !phoneNumberId) {
       console.error('[v0] Missing WhatsApp credentials')
       return NextResponse.json(
@@ -148,56 +151,58 @@ export async function POST(request: NextRequest) {
       console.error('[v0] WhatsApp API error:', data)
       const apiErrorMessage =
         data?.error?.message || data?.error?.error_user_msg || response.statusText || 'Unknown WhatsApp API error'
-      // Persist failed send attempt for debugging
-      try {
-        await fetch(`${FIREBASE_DATABASE_URL}/whatsappSends.json`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            timestamp: new Date().toISOString(),
-            ok: false,
-            status: response.status,
-            request: payload,
-            response: data,
-            to: phoneWithCountryCode,
-          }),
-        })
-      } catch (e) {
-        console.error('[v0] Failed to persist send record:', e)
-      }
       return NextResponse.json(
         { error: apiErrorMessage, details: data },
         { status: response.status }
       )
     }
 
-    // Persist successful send attempt for debugging/audit
-    try {
-      await fetch(`${FIREBASE_DATABASE_URL}/whatsappSends.json`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          timestamp: new Date().toISOString(),
-          ok: true,
-          status: response.status,
-          request: payload,
-          response: data,
-          to: phoneWithCountryCode,
-          messageId: data?.messages?.[0]?.id || null,
-        }),
-      })
-    } catch (e) {
-      console.error('[v0] Failed to persist send record:', e)
+    const wamid = data?.messages?.[0]?.id
+
+    if (!wamid) {
+      console.warn('[v0] WhatsApp API response did not include a wamid:', data)
     }
 
-    console.log('[v0] Message sent successfully:', data.messages[0].id)
+    const now = new Date().toISOString()
+    const persistedRecord = wamid
+      ? {
+          to: phoneWithCountryCode,
+          phoneNumberId,
+          templateName,
+          templateLanguage,
+          templateParameters: templateParameters.length > 0 ? templateParameters : undefined,
+          wamid,
+          status: 'accepted' as const,
+          createdAt: now,
+          updatedAt: now,
+          metaResponse: data,
+        }
+      : null
+
+    if (persistedRecord) {
+      try {
+        await saveWhatsAppMessageRecord(persistedRecord)
+      } catch (error) {
+        console.error('[v0] Failed to persist WhatsApp send record:', error)
+      }
+    }
+
+    const responseBody: WhatsAppSendResponse & { messageId: string } = {
+      success: true,
+      wamid: wamid || '',
+      messageId: wamid || '',
+      phoneNumberId,
+      to: phoneWithCountryCode,
+      templateName,
+      templateLanguage,
+      deliveryMode: 'template',
+    }
+
+    console.log('[v0] Message sent successfully:', wamid)
     return NextResponse.json(
       {
-        success: true,
-        messageId: data.messages[0].id,
+        ...responseBody,
         phone: phoneWithCountryCode,
-        deliveryMode: 'template',
-        templateName,
       },
       { status: 200 }
     )
