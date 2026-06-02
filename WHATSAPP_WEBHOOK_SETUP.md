@@ -18,7 +18,9 @@ https://your-app.vercel.app/api/webhook/whatsapp
 ### 3. Set Environment Variables
 Add these to your `.env.local` file:
 ```
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
 WHATSAPP_ACCESS_TOKEN=your_whatsapp_access_token_here
+WHATSAPP_VERIFY_TOKEN=your_verify_token_here
 ```
 
 You can get your access token from:
@@ -30,7 +32,7 @@ You can get your access token from:
 2. Navigate to **WhatsApp → Configuration**
 3. In the **Webhooks** section:
    - **Callback URL**: `https://your-app.vercel.app/api/webhook/whatsapp`
-   - **Verify Token**: `Hussainahmad8888` (or set your own)
+  - **Verify Token**: the same value as `WHATSAPP_VERIFY_TOKEN`
 
 4. Click **Verify and Save**
 
@@ -58,7 +60,9 @@ You can test the webhook from Meta's dashboard:
 ## Environment Variables Needed
 
 ```env
+WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id_here
 WHATSAPP_ACCESS_TOKEN=your_access_token_here
+WHATSAPP_VERIFY_TOKEN=your_verify_token_here
 ```
 
 Get this from:

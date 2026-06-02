@@ -28,7 +28,10 @@ Add these environment variables:
 
 ```
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
-WHATSAPP_ACCESS_TOKEN=Hussainahmad8888
+WHATSAPP_ACCESS_TOKEN=your_access_token_here
+WHATSAPP_VERIFY_TOKEN=your_verify_token_here
+WHATSAPP_TEMPLATE_NAME=your_approved_template_name
+WHATSAPP_TEMPLATE_LANGUAGE=en_US
 ```
 
 ### 3. **Get WhatsApp Credentials**
@@ -46,7 +49,7 @@ For more details: https://developers.facebook.com/docs/whatsapp/cloud-api/get-st
 2. For each appointment, add the patient's phone number in the input field
 3. Click "Save" to store the phone number in your database
 4. Click "Send WhatsApp" to send a reminder message
-5. Message status shows whether it was sent successfully
+5. Message status shows whether it was accepted successfully
 
 ### 5. **Message Format**
 
@@ -77,6 +80,7 @@ Please arrive 10 minutes early. Reply "CONFIRM" to confirm your appointment.
 **Messages not sending?**
 - Check WhatsApp access token is valid
 - Verify phone number format (should include country code, e.g., +12025551234)
+- If you are sending reminders outside the 24-hour customer service window, create and approve a WhatsApp template and set `WHATSAPP_TEMPLATE_NAME`
 - Check Firebase connection in console
 
 **Can't see appointments?**

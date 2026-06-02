@@ -1,17 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Your verify token from Meta
-const VERIFY_TOKEN = 'Hussainahmad8888';
+const FIREBASE_DATABASE_URL = 'https://health-37caa-default-rtdb.firebaseio.com';
+
+function readEnvValue(name: string) {
+  return process.env[name]?.trim();
+}
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
   const mode = searchParams.get('hub.mode');
   const token = searchParams.get('hub.verify_token');
   const challenge = searchParams.get('hub.challenge');
+  const verifyToken = readEnvValue('WHATSAPP_VERIFY_TOKEN');
+
+  if (!verifyToken) {
+    console.log('[v0] WHATSAPP_VERIFY_TOKEN not set');
+    return new NextResponse('Webhook not configured', { status: 500 });
+  }
 
   // Verify webhook
   if (mode && token) {
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe' && token === verifyToken) {
       console.log('[v0] Webhook verified successfully');
       return new NextResponse(challenge, { status: 200 });
     } else {
@@ -48,11 +57,22 @@ export async function POST(request: NextRequest) {
 
               console.log(`[v0] Message from ${from}: ${text}`);
 
-              // Send acknowledgment (mark as read)
-              await markMessageAsRead(phoneNumberId, messageId);
+              await saveIncomingMessage({
+                phoneNumberId,
+                from,
+                messageId,
+                text,
+                receivedAt: new Date().toISOString(),
+              });
 
-              // Optional: Send auto-reply
-              await sendReply(phoneNumberId, from, 'Message received! Thanks for contacting us.');
+              // Keep webhook delivery resilient even if the follow-up actions fail.
+              markMessageAsRead(phoneNumberId, messageId).catch((error) => {
+                console.error('[v0] Error marking message as read:', error);
+              });
+
+              sendReply(phoneNumberId, from, 'Message received! Thanks for contacting us.').catch((error) => {
+                console.error('[v0] Error sending reply:', error);
+              });
             }
           }
 
@@ -60,6 +80,22 @@ export async function POST(request: NextRequest) {
           if (value.statuses) {
             for (const status of value.statuses) {
               console.log(`[v0] Message ${status.id} status: ${status.status}`);
+              // Persist status update for debugging/delivery tracking
+              try {
+                await fetch(`${FIREBASE_DATABASE_URL}/whatsappStatuses.json`, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    timestamp: new Date().toISOString(),
+                    id: status.id,
+                    status: status.status,
+                    recipient: status.recipient_id || null,
+                    raw: status,
+                  }),
+                })
+              } catch (e) {
+                console.error('[v0] Failed to persist status update:', e)
+              }
             }
           }
         }
@@ -89,7 +125,7 @@ async function markMessageAsRead(
 
   try {
     const response = await fetch(
-      `https://graph.instagram.com/v18.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
@@ -126,7 +162,7 @@ async function sendReply(
 
   try {
     const response = await fetch(
-      `https://graph.instagram.com/v18.0/${phoneNumberId}/messages`,
+      `https://graph.facebook.com/v18.0/${phoneNumberId}/messages`,
       {
         method: 'POST',
         headers: {
@@ -150,5 +186,33 @@ async function sendReply(
     }
   } catch (error) {
     console.error('[v0] Error sending reply:', error);
+  }
+}
+
+async function saveIncomingMessage(message: {
+  phoneNumberId: string;
+  from: string;
+  messageId: string;
+  text: string;
+  receivedAt: string;
+}): Promise<void> {
+  try {
+    const response = await fetch(`${FIREBASE_DATABASE_URL}/whatsappMessages.json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+      ...message,
+      direction: 'inbound',
+      status: 'received',
+      }),
+    });
+
+    if (!response.ok) {
+      console.error('[v0] Failed to save WhatsApp message:', response.statusText);
+    }
+  } catch (error) {
+    console.error('[v0] Error saving incoming message:', error);
   }
 }
