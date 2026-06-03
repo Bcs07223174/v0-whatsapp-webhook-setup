@@ -7,6 +7,7 @@ import {
   WhatsAppMessageStatus,
   WhatsAppStatusWebhookPayload,
 } from '@/lib/whatsapp-types'
+import { getWhatsAppGraphVersion } from '@/lib/whatsapp-template'
 
 const FIREBASE_DATABASE_URL = 'https://health-37caa-default-rtdb.firebaseio.com'
 
@@ -168,7 +169,7 @@ async function markMessageAsRead(phoneNumberId: string, messageId: string): Prom
   }
 
   try {
-    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/${getWhatsAppGraphVersion()}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -198,7 +199,7 @@ async function sendReply(phoneNumberId: string, to: string, text: string): Promi
   }
 
   try {
-    const response = await fetch(`https://graph.facebook.com/v18.0/${phoneNumberId}/messages`, {
+    const response = await fetch(`https://graph.facebook.com/${getWhatsAppGraphVersion()}/${phoneNumberId}/messages`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

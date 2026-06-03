@@ -2,6 +2,7 @@ import { WhatsAppMessageRecord } from '@/lib/whatsapp-types'
 
 const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL || 'https://health-37caa-default-rtdb.firebaseio.com'
 const WHATSAPP_TRACKING_PATH = `${FIREBASE_DATABASE_URL}/whatsappMessageTracking`
+const APPOINTMENTS_PATH = `${FIREBASE_DATABASE_URL}/appointments`
 
 function toJsonQueryValue(value: string) {
   return encodeURIComponent(JSON.stringify(value))
@@ -90,4 +91,31 @@ export async function updateWhatsAppMessageRecordByWamid(
   }
 
   return true
+}
+
+export async function updateAppointmentWhatsAppFields(
+  appointmentId: string,
+  patch: {
+    whatsappStatus: 'sent' | 'failed'
+    whatsappMessageId?: string
+    whatsappSentAt: string
+    whatsappError?: string
+    messageStatus?: 'sent' | 'failed'
+    lastMessageTime?: string
+  }
+) {
+  const response = await fetch(`${APPOINTMENTS_PATH}/${encodeURIComponent(appointmentId)}.json`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(patch),
+  })
+
+  if (!response.ok) {
+    const details = await readResponseBody(response)
+    throw new Error(`Failed to update appointment WhatsApp fields: ${response.status} ${JSON.stringify(details)}`)
+  }
+
+  return readResponseBody(response)
 }

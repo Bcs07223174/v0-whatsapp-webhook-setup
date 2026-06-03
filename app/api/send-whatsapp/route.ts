@@ -1,216 +1,108 @@
 import { NextRequest, NextResponse } from 'next/server'
 
 import {
-  saveWhatsAppMessageRecord,
-} from '@/lib/whatsapp-database'
-import { WhatsAppSendResponse } from '@/lib/whatsapp-types'
+  getDefaultWhatsAppTemplateLanguage,
+  getDefaultWhatsAppTemplateName,
+  sendWhatsAppTemplateMessage,
+  WhatsAppTemplateSendError,
+  WhatsAppTemplateValidationError,
+} from '@/lib/whatsapp-template'
 
-const WHATSAPP_API_URL = 'https://graph.facebook.com/v25.0'
-const DEFAULT_WHATSAPP_TEMPLATE_NAME = 'dfcgvhjk'
+function toTrimmedString(value: unknown) {
+  if (typeof value === 'string') {
+    return value.trim()
+  }
 
-function readEnvValue(name: string) {
-  return process.env[name]?.trim()
-}
-
-function normalizePakistanPhoneNumber(patientPhone: unknown) {
-  const phoneValue = typeof patientPhone === 'string' ? patientPhone : ''
-  const digitsOnly = phoneValue.replace(/\D/g, '')
-
-  if (!digitsOnly) {
+  if (value == null) {
     return ''
   }
 
-  if (digitsOnly.startsWith('92') && digitsOnly.length === 12) {
-    return digitsOnly
+  return String(value).trim()
+}
+
+function getStatusForError(error: unknown) {
+  if (error instanceof WhatsAppTemplateValidationError) {
+    return 400
   }
 
-  if (digitsOnly.startsWith('0') && digitsOnly.length === 11) {
-    return `92${digitsOnly.slice(1)}`
+  if (error instanceof WhatsAppTemplateSendError) {
+    return error.status || 502
   }
 
-  if (digitsOnly.length === 10) {
-    return `92${digitsOnly}`
+  return 500
+}
+
+function getErrorResponse(error: unknown) {
+  if (error instanceof WhatsAppTemplateSendError) {
+    return {
+      success: false,
+      error: error.message,
+      details: {
+        metaErrorMessage: error.metaError.message,
+        metaErrorCode: error.metaError.code,
+        metaErrorSubcode: error.metaError.subcode,
+        fbtraceId: error.metaError.fbtrace_id,
+      },
+    }
   }
 
-  return ''
+  if (error instanceof Error) {
+    return {
+      success: false,
+      error: error.message,
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Failed to send WhatsApp template.',
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const {
-      patientPhone,
-      to,
-      phoneNumberId: requestPhoneNumberId,
-      templateName: requestTemplateName,
-      templateLanguage: requestTemplateLanguage,
-      templateParameters: requestTemplateParameters,
-      patientName,
-      appointmentDate,
-      appointmentTime,
-      doctorName,
-    } =
-      await request.json()
-
-    const phoneNumberId =
-      (typeof requestPhoneNumberId === 'string' ? requestPhoneNumberId.trim() : '') ||
-      readEnvValue('WHATSAPP_PHONE_NUMBER_ID')
-    const accessToken = readEnvValue('WHATSAPP_ACCESS_TOKEN')
-    const templateName =
-      (typeof requestTemplateName === 'string' ? requestTemplateName.trim() : '') ||
-      readEnvValue('WHATSAPP_TEMPLATE_NAME') ||
-      DEFAULT_WHATSAPP_TEMPLATE_NAME
+    const body = await request.json()
+    const templateName = toTrimmedString(body.templateName) || getDefaultWhatsAppTemplateName()
     const templateLanguage =
-      (typeof requestTemplateLanguage === 'string' ? requestTemplateLanguage.trim() : '') ||
-      readEnvValue('WHATSAPP_TEMPLATE_LANGUAGE') ||
-      'en_US'
+      toTrimmedString(body.templateLanguage || body.languageCode) || getDefaultWhatsAppTemplateLanguage()
+    const to = toTrimmedString(body.patientPhone || body.to)
 
-    if (!accessToken || !phoneNumberId) {
-      console.error('[v0] Missing WhatsApp credentials')
-      return NextResponse.json(
-        { error: 'WhatsApp credentials not configured. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to environment variables.' },
-        { status: 500 }
-      )
-    }
-
-    const phoneToUse =
-      typeof patientPhone === 'string'
-        ? patientPhone.trim()
-        : typeof to === 'string'
-          ? to.trim()
-          : ''
-
-    if (!phoneToUse) {
-      return NextResponse.json(
-        { error: 'Missing required phone number. Provide patientPhone or to.' },
-        { status: 400 }
-      )
-    }
-
-    // Normalize local Pakistan numbers to international format without changing
-    // numbers that are already international.
-    const phoneWithCountryCode = normalizePakistanPhoneNumber(phoneToUse)
-
-    if (!phoneWithCountryCode) {
-      return NextResponse.json(
-        {
-          error:
-            'Invalid patient phone number. Enter a valid Pakistan number like 0305xxxxxxx or 92305xxxxxxx.',
-        },
-        { status: 400 }
-      )
-    }
-
-    const templateParameters = Array.isArray(requestTemplateParameters)
-      ? requestTemplateParameters
-        .map((value) => (typeof value === 'string' ? value.trim() : ''))
-        .filter((value) => value.length > 0)
-      : []
-
-    const payload: Record<string, unknown> = {
-      messaging_product: 'whatsapp',
-      to: phoneWithCountryCode,
-      type: 'template',
-      template: {
-        name: templateName,
-        language: {
-          code: templateLanguage,
-        },
-      },
-    }
-
-    if (templateParameters.length > 0) {
-      payload.template = {
-        ...(payload.template as Record<string, unknown>),
-        components: [
-          {
-            type: 'body',
-            parameters: templateParameters.map((text) => ({
-              type: 'text',
-              text,
-            })),
-          },
-        ],
-      }
-    }
-
-    const response = await fetch(
-      `${WHATSAPP_API_URL}/${phoneNumberId}/messages`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify(payload),
-      }
-    )
-
-    const data = await response.json()
-
-    if (!response.ok) {
-      console.error('[v0] WhatsApp API error:', data)
-      const apiErrorMessage =
-        data?.error?.message || data?.error?.error_user_msg || response.statusText || 'Unknown WhatsApp API error'
-      return NextResponse.json(
-        { error: apiErrorMessage, details: data },
-        { status: response.status }
-      )
-    }
-
-    const wamid = data?.messages?.[0]?.id
-
-    if (!wamid) {
-      console.warn('[v0] WhatsApp API response did not include a wamid:', data)
-    }
-
-    const now = new Date().toISOString()
-    const persistedRecord = wamid
-      ? {
-          to: phoneWithCountryCode,
-          phoneNumberId,
-          templateName,
-          templateLanguage,
-          templateParameters: templateParameters.length > 0 ? templateParameters : undefined,
-          wamid,
-          status: 'accepted' as const,
-          createdAt: now,
-          updatedAt: now,
-          metaResponse: data,
-        }
-      : null
-
-    if (persistedRecord) {
-      try {
-        await saveWhatsAppMessageRecord(persistedRecord)
-      } catch (error) {
-        console.error('[v0] Failed to persist WhatsApp send record:', error)
-      }
-    }
-
-    const responseBody: WhatsAppSendResponse & { messageId: string } = {
-      success: true,
-      wamid: wamid || '',
-      messageId: wamid || '',
-      phoneNumberId,
-      to: phoneWithCountryCode,
+    const result = await sendWhatsAppTemplateMessage({
+      to,
+      phoneNumberId: toTrimmedString(body.phoneNumberId),
       templateName,
-      templateLanguage,
-      deliveryMode: 'template',
-    }
+      languageCode: templateLanguage,
+      values: {
+        appointmentId: toTrimmedString(body.appointmentId),
+        patientName: toTrimmedString(body.patientName),
+        doctorName: toTrimmedString(body.doctorName),
+        businessName: toTrimmedString(body.businessName || body.clinicName),
+        clinicName: toTrimmedString(body.clinicName || body.businessName),
+        serviceName: toTrimmedString(body.serviceName || body.reason),
+        reason: toTrimmedString(body.reason || body.serviceName),
+        appointmentDate: toTrimmedString(body.appointmentDate),
+        appointmentTime: toTrimmedString(body.appointmentTime),
+        templateParameters: Array.isArray(body.templateParameters) ? body.templateParameters : [],
+        headerParameters: Array.isArray(body.headerParameters) ? body.headerParameters : [],
+        buttonParameters:
+          body.buttonParameters && typeof body.buttonParameters === 'object' && !Array.isArray(body.buttonParameters)
+            ? body.buttonParameters
+            : undefined,
+      },
+    })
 
-    console.log('[v0] Message sent successfully:', wamid)
     return NextResponse.json(
       {
-        ...responseBody,
-        phone: phoneWithCountryCode,
+        ...result,
+        phone: result.to,
       },
       { status: 200 }
     )
   } catch (error) {
-    console.error('[v0] Send WhatsApp error:', error)
-    return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
-    )
+    console.error('[WhatsApp Template] Send route failed', {
+      error,
+    })
+
+    return NextResponse.json(getErrorResponse(error), { status: getStatusForError(error) })
   }
 }

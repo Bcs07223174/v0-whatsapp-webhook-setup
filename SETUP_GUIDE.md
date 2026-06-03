@@ -30,8 +30,10 @@ Add these environment variables:
 WHATSAPP_PHONE_NUMBER_ID=your_phone_number_id
 WHATSAPP_ACCESS_TOKEN=your_access_token_here
 WHATSAPP_VERIFY_TOKEN=your_verify_token_here
-WHATSAPP_TEMPLATE_NAME=your_approved_template_name
+WHATSAPP_GRAPH_VERSION=v25.0
+WHATSAPP_TEMPLATE_NAME=appointment
 WHATSAPP_TEMPLATE_LANGUAGE=en_US
+NEXT_PUBLIC_APP_URL=https://v0-whatsapp-webhook-setup-one.vercel.app
 ```
 
 ### 3. **Get WhatsApp Credentials**
@@ -68,16 +70,20 @@ Please arrive 10 minutes early. Reply "CONFIRM" to confirm your appointment.
 
 ### 5.1 **Template Test Payload**
 
-Use the approved active template `dfcgvhjk` when testing the send route:
+Use the debug route to verify the exact payload before sending it to Meta:
 
 ```bash
-curl -X POST "http://localhost:3000/api/send-whatsapp" \
+curl -X POST "http://localhost:3000/api/whatsapp/debug-template" \
   -H "Content-Type: application/json" \
   -d '{
-    "to": "923267564405",
-    "phoneNumberId": "286906287843537",
-    "templateName": "dfcgvhjk",
-    "templateLanguage": "en_US"
+    "to": "03267564405",
+    "templateName": "appointment",
+    "templateLanguage": "en_US",
+    "appointmentId": "APT12345",
+    "patientName": "Ali",
+    "clinicName": "Fashion Styles",
+    "appointmentDate": "04 June 2026",
+    "appointmentTime": "05:00 PM"
   }'
 ```
 
@@ -90,7 +96,7 @@ Expected success response:
 }
 ```
 
-If you later use a template with placeholders, include `templateParameters` in the request body and make sure the number of parameters matches the template definition.
+The route returns a dry-run payload unless you add `"send": true`. If you use a different approved template, add its exact BODY, HEADER, and dynamic BUTTON variables to `WHATSAPP_TEMPLATE_CONFIGS` before sending.
 
 ### 5.2 **Status Flow**
 

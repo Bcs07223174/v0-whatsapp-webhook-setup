@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 
-const GRAPH_API = 'https://graph.facebook.com/v18.0'
+import { getWhatsAppGraphVersion } from '@/lib/whatsapp-template'
 
 function readEnvValue(name: string) {
   return process.env[name]?.trim()
@@ -19,7 +19,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'WHATSAPP_ACCESS_TOKEN not configured' }, { status: 500 })
     }
 
-    const res = await fetch(`${GRAPH_API}/${encodeURIComponent(messageId)}?fields=status&access_token=${encodeURIComponent(accessToken)}`)
+    const res = await fetch(`https://graph.facebook.com/${getWhatsAppGraphVersion()}/${encodeURIComponent(messageId)}?fields=status`, {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    })
     const data = await res.json()
 
     if (!res.ok) {

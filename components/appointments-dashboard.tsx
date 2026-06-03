@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { ref, onValue, update, limitToLast, query, orderByChild } from 'firebase/database'
 import { AlertCircle, CheckCircle2, Clock, Send } from 'lucide-react'
 
@@ -14,12 +14,20 @@ interface Appointment {
   patientName: string
   patientId: string
   patientPhone?: string
+  businessName?: string
+  clinicName?: string
+  serviceName?: string
+  reason?: string
   appointmentDate: string
   appointmentTime: string
   doctorName: string
   status: string
   messageStatus?: 'pending' | 'sent' | 'failed'
   lastMessageTime?: string
+  whatsappStatus?: 'sent' | 'failed'
+  whatsappMessageId?: string
+  whatsappSentAt?: string
+  whatsappError?: string
 }
 
 interface WhatsappMessage {
@@ -38,6 +46,7 @@ export function AppointmentsDashboard() {
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [whatsAppConfigured, setWhatsAppConfigured] = useState(true)
+  const autoSentAppointments = useRef(new Set<string>())
 
   useEffect(() => {
     const appointmentsRef = ref(database, 'appointments')
@@ -110,10 +119,28 @@ export function AppointmentsDashboard() {
     loadWhatsAppConfig()
   }, [])
 
-  const updatePhoneNumber = (appointmentId: string, phone: string) => {
+  const shouldAutoSendAppointment = (appointment: Appointment) => {
+    if (!appointment.appointmentId) {
+      return false
+    }
+
+    if (appointment.whatsappStatus === 'sent') {
+      return false
+    }
+
+    if (appointment.whatsappStatus === 'failed' && autoSentAppointments.current.has(appointment.appointmentId)) {
+      return false
+    }
+
+    return true
+  }
+
+  const updatePhoneNumber = async (appointment: Appointment, phone: string) => {
+    const appointmentId = appointment.appointmentId
+    const sanitizedPhone = phone.replace(/[^0-9+]/g, '')
     const appointmentRef = ref(database, `appointments/${appointmentId}`)
-    update(appointmentRef, {
-      patientPhone: phone.replace(/[^0-9+]/g, ''),
+    await update(appointmentRef, {
+      patientPhone: sanitizedPhone,
     })
 
     setPhoneNumbers((prev) => ({
@@ -122,6 +149,21 @@ export function AppointmentsDashboard() {
     }))
 
     setMessage(`Phone number updated for ${appointmentId}`)
+
+    if (!whatsAppConfigured || !shouldAutoSendAppointment(appointment)) {
+      return
+    }
+
+    autoSentAppointments.current.add(appointmentId)
+
+    await sendWhatsAppMessage({
+      ...appointment,
+      patientPhone: sanitizedPhone,
+    })
+  }
+
+  const getPhoneInputValue = (appointment: Appointment) => {
+    return toTrimmedString(phoneNumbers[appointment.appointmentId]) || toTrimmedString(appointment.patientPhone)
   }
 
   const sendWhatsAppMessage = async (appointment: Appointment) => {
@@ -142,15 +184,22 @@ export function AppointmentsDashboard() {
         return
       }
 
-      const response = await fetch('/api/send-whatsapp', {
+      const clinicName = appointment.clinicName || appointment.businessName || appointment.doctorName
+
+      const response = await fetch('/api/whatsapp/send-appointment', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          appointmentId: appointment.appointmentId,
           patientPhone: phoneToSend,
           patientName: appointment.patientName,
+          clinicName,
+          businessName: appointment.businessName,
+          doctorName: appointment.doctorName,
+          serviceName: appointment.serviceName,
+          reason: appointment.reason,
           appointmentDate: appointment.appointmentDate,
           appointmentTime: appointment.appointmentTime,
-          doctorName: appointment.doctorName,
         }),
       })
 
@@ -158,19 +207,13 @@ export function AppointmentsDashboard() {
 
       if (response.ok) {
         const deliveredPhone = data.phone || phoneToSend
-        const deliveryModeLabel = data.deliveryMode === 'template' ? 'template' : 'text message'
-
-        const appointmentRef = ref(database, `appointments/${appointment.appointmentId}`)
-        await update(appointmentRef, {
-          messageStatus: 'sent',
-          lastMessageTime: new Date().toISOString(),
-        })
 
         setMessage(
-          `WhatsApp ${deliveryModeLabel} accepted for ${appointment.patientName} at ${deliveredPhone}.`
+          `WhatsApp appointment template accepted for ${appointment.patientName} at ${deliveredPhone}.`
         )
       } else {
         const errorDetail =
+          data?.details?.metaErrorMessage ||
           data?.details?.error?.message ||
           data?.details?.error?.error_user_msg ||
           data?.details?.error?.error_data?.details ||
@@ -201,7 +244,8 @@ export function AppointmentsDashboard() {
 
   const getResolvedPhone = (appointment: Appointment) => {
     const phoneInput = toTrimmedString(phoneNumbers[appointment.appointmentId])
-    return phoneInput
+    const savedPhone = toTrimmedString(appointment.patientPhone)
+    return phoneInput || savedPhone
   }
 
   return (
@@ -298,7 +342,7 @@ export function AppointmentsDashboard() {
                     <div className="flex gap-2">
                       <Input
                         placeholder="03xxxxxxxxx"
-                        value={phoneNumbers[apt.appointmentId] || ''}
+                        value={getPhoneInputValue(apt)}
                         aria-invalid={!getResolvedPhone(apt)}
                         onChange={(e) =>
                           setPhoneNumbers((prev) => ({
@@ -308,11 +352,9 @@ export function AppointmentsDashboard() {
                         }
                         className="flex-1"
                       />
-                      {phoneNumbers[apt.appointmentId] && (
+                      {toTrimmedString(phoneNumbers[apt.appointmentId]) && (
                         <Button
-                          onClick={() =>
-                            updatePhoneNumber(apt.appointmentId, phoneNumbers[apt.appointmentId])
-                          }
+                          onClick={() => updatePhoneNumber(apt, phoneNumbers[apt.appointmentId])}
                           size="sm"
                           variant="outline"
                         >
@@ -322,17 +364,17 @@ export function AppointmentsDashboard() {
                     </div>
                   </div>
 
-                  {apt.messageStatus === 'sent' ? (
+                  {(apt.whatsappStatus || apt.messageStatus) === 'sent' ? (
                     <div className="flex items-center gap-2 text-green-700 bg-green-50 p-2 rounded">
                       <CheckCircle2 className="w-4 h-4" />
                       <span className="text-sm">
-                        Sent on {new Date(apt.lastMessageTime!).toLocaleString()}
+                        Sent on {new Date((apt.whatsappSentAt || apt.lastMessageTime)!).toLocaleString()}
                       </span>
                     </div>
-                  ) : apt.messageStatus === 'failed' ? (
+                  ) : (apt.whatsappStatus || apt.messageStatus) === 'failed' ? (
                     <div className="flex items-center gap-2 text-red-700 bg-red-50 p-2 rounded">
                       <AlertCircle className="w-4 h-4" />
-                      <span className="text-sm">Failed to send</span>
+                      <span className="text-sm">{apt.whatsappError || 'Failed to send'}</span>
                     </div>
                   ) : null}
 
