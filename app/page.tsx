@@ -1,9 +1,9 @@
-import { AppointmentsDashboard } from '@/components/appointments-dashboard'
+import { ChatInterface } from '@/components/chat-interface'
 
 export default function Page() {
   return (
-    <main className="min-h-screen bg-white">
-      <AppointmentsDashboard />
+    <main className="bg-white">
+      <ChatInterface />
     </main>
   )
 }
