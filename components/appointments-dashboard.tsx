@@ -47,6 +47,7 @@ interface Appointment {
 interface WhatsappMessage {
   id: string
   from: string
+  to?: string
   text: string
   receivedAt: string
   status: string
@@ -283,6 +284,17 @@ export function AppointmentsDashboard() {
     const appointmentPhone = selectedAppointment.patientPhone.replace(/\D/g, '').replace(/^0/, '92')
     return messagePhone === appointmentPhone
   })
+  const latestIncomingMessage = selectedIncomingMessages.find((recentMessage) => recentMessage.direction === 'inbound')
+  const isWithinCustomerWindow = latestIncomingMessage
+    ? Date.now() - new Date(latestIncomingMessage.receivedAt).getTime() < 24 * 60 * 60 * 1000
+    : false
+  const selectedOutgoingMessages = recentMessages.filter((recentMessage) => {
+    if (!selectedAppointment?.patientPhone || recentMessage.direction !== 'outbound') return false
+
+    const messagePhone = (recentMessage.to || '').replace(/\D/g, '').replace(/^0/, '92')
+    const appointmentPhone = selectedAppointment.patientPhone.replace(/\D/g, '').replace(/^0/, '92')
+    return messagePhone === appointmentPhone
+  })
   const selectedSentMessages = localSentMessages.filter(
     (sentMessage) => sentMessage.appointmentId === selectedAppointment?.appointmentId,
   )
@@ -290,10 +302,44 @@ export function AppointmentsDashboard() {
     `${conversation.name} ${conversation.phone}`.toLowerCase().includes(search.toLowerCase()),
   )
 
-  const handleSend = () => {
-    if (!draft.trim()) return
-    setDraft('')
-    setMessage('Message queued for delivery.')
+  const handleSend = async () => {
+    const text = draft.trim()
+    const phone = selectedAppointment?.patientPhone?.trim()
+
+    if (!text || !phone) return
+    if (!isWithinCustomerWindow) {
+      setMessage('Free-form messages are available for 24 hours after the customer’s latest message. Send an approved template instead.')
+      return
+    }
+
+    try {
+      const response = await fetch('/api/whatsapp/send-message', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ to: phone, text }),
+      })
+      const data = await response.json()
+
+      if (!response.ok) {
+        setMessage(data.error || 'Message could not be sent.')
+        return
+      }
+
+      setRecentMessages((current) => [...current, {
+        id: data.messageId || `local-${Date.now()}`,
+        to: phone,
+        from: '',
+        text,
+        receivedAt: data.sentAt || new Date().toISOString(),
+        status: 'sent',
+        direction: 'outbound',
+      }])
+      setDraft('')
+      setMessage('Message sent.')
+    } catch (error) {
+      console.error('[v0] Send customer message error:', error)
+      setMessage('Message could not be sent.')
+    }
   }
 
   const initials = (name = '') => name.split(' ').map((part) => part[0]).slice(0, 2).join('').toUpperCase()
@@ -341,6 +387,7 @@ export function AppointmentsDashboard() {
               {selectedAppointment.whatsappStatus === 'sent' && selectedSentMessages.length === 0 && <div className="message-bubble outgoing compact">Your appointment is confirmed. See you soon!<time>10:33 AM <CheckCheck size={14} /></time></div>}
               {selectedSentMessages.map((sentMessage) => <div className="message-bubble outgoing compact" key={sentMessage.sentAt}>{sentMessage.text}<time>{new Date(sentMessage.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} <CheckCheck size={14} /></time></div>)}
               {selectedIncomingMessages.map((incomingMessage) => <div className="message-bubble incoming" key={incomingMessage.id}>{incomingMessage.text}<time>{new Date(incomingMessage.receivedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div>)}
+              {selectedOutgoingMessages.map((outgoingMessage) => <div className="message-bubble outgoing compact" key={outgoingMessage.id}>{outgoingMessage.text}<time>{new Date(outgoingMessage.receivedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} <CheckCheck size={14} /></time></div>)}
             </> : <>
               <div className="message-bubble incoming">Hi! I&apos;d like to know more about my upcoming visit.<time>10:24 AM</time></div>
               <div className="message-bubble outgoing">Absolutely. I have your appointment details ready below.<time>10:25 AM <CheckCheck size={14} /></time></div>
