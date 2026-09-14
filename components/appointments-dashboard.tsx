@@ -86,12 +86,18 @@ export function AppointmentsDashboard() {
   const [localSentMessages, setLocalSentMessages] = useState<LocalSentMessage[]>([])
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
+  const [messageTone, setMessageTone] = useState<'success' | 'error' | 'info'>('info')
   const [whatsAppConfigured, setWhatsAppConfigured] = useState(true)
   const [selectedId, setSelectedId] = useState('')
   const [search, setSearch] = useState('')
   const [draft, setDraft] = useState('')
   const [showDetails, setShowDetails] = useState(true)
   const [mobileListOpen, setMobileListOpen] = useState(true)
+
+  const setFeedback = (text: string, tone: 'success' | 'error' | 'info') => {
+    setMessage(text)
+    setMessageTone(tone)
+  }
 
   useEffect(() => {
     const appointmentsRef = ref(database, 'appointments')
@@ -152,9 +158,7 @@ export function AppointmentsDashboard() {
         setWhatsAppConfigured(Boolean(data.configured))
 
         if (!data.configured) {
-          setMessage(
-            'WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to environment variables.'
-          )
+          setFeedback('WhatsApp is not configured yet. Add WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID to environment variables.', 'error')
         }
       } catch (error) {
         console.error('[v0] Failed to load WhatsApp config:', error)
@@ -166,9 +170,7 @@ export function AppointmentsDashboard() {
 
   const sendWhatsAppMessage = async (appointment: Appointment) => {
     if (!whatsAppConfigured) {
-      setMessage(
-        'WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID first.'
-      )
+      setFeedback('WhatsApp credentials are missing. Set WHATSAPP_ACCESS_TOKEN and WHATSAPP_PHONE_NUMBER_ID first.', 'error')
       return
     }
 
@@ -178,7 +180,7 @@ export function AppointmentsDashboard() {
       const phoneToSend = getResolvedPhone(appointment)
 
       if (!phoneToSend) {
-        setMessage('Please add a phone number first')
+        setFeedback('Add a valid Pakistani customer phone number first.', 'error')
         return
       }
 
@@ -215,9 +217,7 @@ export function AppointmentsDashboard() {
           },
         ])
 
-        setMessage(
-          `WhatsApp appointment template accepted for ${appointment.patientName} at ${deliveredPhone}.`
-        )
+        setFeedback(`Template accepted by WhatsApp for ${appointment.patientName} at ${deliveredPhone}. Delivery will update when Meta sends a webhook status.`, 'info')
       } else {
         const errorDetail =
           data?.details?.metaErrorMessage ||
@@ -227,11 +227,11 @@ export function AppointmentsDashboard() {
           data?.error ||
           'Unknown WhatsApp error'
 
-        setMessage(`Failed to send message: ${errorDetail}`)
+        setFeedback(`Template was not sent: ${errorDetail}`, 'error')
       }
     } catch (error) {
       console.error('[v0] Send message error:', error)
-      setMessage('Error sending message')
+      setFeedback('Could not contact WhatsApp. Check the server logs and credentials.', 'error')
     } finally {
       setSendingId(null)
     }
@@ -308,7 +308,7 @@ export function AppointmentsDashboard() {
 
     if (!text || !phone) return
     if (!isWithinCustomerWindow) {
-      setMessage('Free-form messages are available for 24 hours after the customer’s latest message. Send an approved template instead.')
+      setFeedback('This chat is outside the 24-hour customer window. Send an approved template instead.', 'error')
       return
     }
 
@@ -321,7 +321,7 @@ export function AppointmentsDashboard() {
       const data = await response.json()
 
       if (!response.ok) {
-        setMessage(data.error || 'Message could not be sent.')
+        setFeedback(data.error || 'Message was rejected by WhatsApp.', 'error')
         return
       }
 
@@ -335,10 +335,10 @@ export function AppointmentsDashboard() {
         direction: 'outbound',
       }])
       setDraft('')
-      setMessage('Message sent.')
+      setFeedback('Message sent. Waiting for WhatsApp delivery status.', 'success')
     } catch (error) {
       console.error('[v0] Send customer message error:', error)
-      setMessage('Message could not be sent.')
+      setFeedback('Message could not be sent. Check the WhatsApp configuration.', 'error')
     }
   }
 
@@ -393,9 +393,10 @@ export function AppointmentsDashboard() {
               <div className="message-bubble outgoing">Absolutely. I have your appointment details ready below.<time>10:25 AM <CheckCheck size={14} /></time></div>
               <div className="message-bubble incoming">{selectedConversation.preview}<time>{selectedConversation.time}</time></div>
             </>}
-            {message && <div className="status-toast"><Check size={14} /> {message}<button onClick={() => setMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}
+            {message && <div className={`status-toast ${messageTone}`}><Check size={14} /> {message}<button onClick={() => setMessage('')} aria-label="Dismiss"><X size={14} /></button></div>}
           </div>
-          <div className="composer"><button className="icon-button" aria-label="Add attachment"><Paperclip size={20} /></button><button className="icon-button" aria-label="Add emoji"><Smile size={20} /></button><input value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') handleSend() }} placeholder="Type a message" /><button className="send-button" aria-label="Send message" onClick={handleSend}><Send size={18} /></button></div>
+          <div className="message-window-banner"><span className={isWithinCustomerWindow ? 'window-open' : 'window-closed'}>{isWithinCustomerWindow ? '24-hour window open' : '24-hour window closed'}</span><small>{isWithinCustomerWindow ? 'You can send any reply.' : 'The customer must message first, or use an approved template.'}</small></div>
+          <div className="composer"><button className="icon-button" aria-label="Add attachment"><Paperclip size={20} /></button><button className="icon-button" aria-label="Add emoji"><Smile size={20} /></button><input disabled={!isWithinCustomerWindow || !whatsAppConfigured} value={draft} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') handleSend() }} placeholder={isWithinCustomerWindow ? 'Type a message' : 'Send a template to start the conversation'} /><button className="send-button" disabled={!isWithinCustomerWindow || !whatsAppConfigured || !draft.trim()} aria-label="Send message" onClick={handleSend}><Send size={18} /></button></div>
         </> : <div className="blank-state"><div className="brand-mark large"><span>WA</span></div><h2>WhatsApp Web</h2><p>Send and receive messages without keeping your phone online.</p></div>}
       </section>
 
@@ -403,7 +404,7 @@ export function AppointmentsDashboard() {
         <div className="details-heading"><h2>Contact info</h2><button className="icon-button" onClick={() => setShowDetails(false)} aria-label="Close contact info"><X size={19} /></button></div>
         <div className="details-profile"><div className="avatar profile" style={{ backgroundColor: selectedConversation.color }}>{initials(selectedConversation.name)}</div><h3>{selectedConversation.name}</h3><span>{selectedConversation.phone}</span></div>
         <div className="details-section"><span className="section-label">About</span><p>Available for appointment questions</p></div>
-        <div className="details-section"><span className="section-label">Appointment</span>{selectedAppointment ? <><div className="detail-row"><span>Date</span><b>{selectedAppointment.appointmentDate}</b></div><div className="detail-row"><span>Time</span><b>{selectedAppointment.appointmentTime}</b></div><div className="detail-row"><span>Doctor</span><b>{selectedAppointment.doctorName}</b></div><div className="detail-row"><span>WhatsApp</span><b className={selectedAppointment.whatsappStatus === 'sent' ? 'success-text' : 'warning-text'}>{selectedAppointment.whatsappStatus === 'sent' ? 'Sent' : 'Pending'}</b></div><button className="appointment-action" onClick={() => selectedAppointment && sendWhatsAppMessage(selectedAppointment)} disabled={sendingId === selectedAppointment.appointmentId || !whatsAppConfigured}><Send size={16} /> {sendingId === selectedAppointment.appointmentId ? 'Sending...' : 'Send appointment reminder'}</button></> : <p className="muted">Demo conversation. Live details will appear when an appointment is connected.</p>}</div>
+        <div className="details-section"><span className="section-label">Appointment</span>{selectedAppointment ? <><div className="detail-row"><span>Date</span><b>{selectedAppointment.appointmentDate}</b></div><div className="detail-row"><span>Time</span><b>{selectedAppointment.appointmentTime}</b></div><div className="detail-row"><span>Doctor</span><b>{selectedAppointment.doctorName}</b></div><div className="detail-row"><span>WhatsApp</span><b className={selectedAppointment.whatsappStatus === 'sent' ? 'success-text' : 'warning-text'}>{selectedAppointment.whatsappStatus === 'sent' ? 'Accepted, delivery pending' : 'Template not sent'}</b></div><button className="appointment-action" onClick={() => selectedAppointment && sendWhatsAppMessage(selectedAppointment)} disabled={sendingId === selectedAppointment.appointmentId || !whatsAppConfigured}><Send size={16} /> {sendingId === selectedAppointment.appointmentId ? 'Sending...' : 'Send approved template'}</button></> : <p className="muted">Demo conversation. Live details will appear when an appointment is connected.</p>}</div>
         <div className="details-section details-actions"><button><BellOff size={17} /> Mute notifications</button><button><Star size={17} /> Starred messages</button><button className="danger"><Archive size={17} /> Archive chat</button></div>
       </aside>}
     </main>

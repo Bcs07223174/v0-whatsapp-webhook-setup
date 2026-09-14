@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { normalizePakistanPhoneNumber } from '@/lib/whatsapp-template'
 
 const FIREBASE_DATABASE_URL = process.env.FIREBASE_DATABASE_URL || 'https://health-37caa-default-rtdb.firebaseio.com'
 
@@ -9,7 +10,7 @@ function textValue(value: unknown) {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json()
-    const to = textValue(body.to || body.patientPhone)
+    const to = normalizePakistanPhoneNumber(body.to || body.patientPhone)
     const text = textValue(body.text || body.message)
     const accessToken = textValue(process.env.WHATSAPP_ACCESS_TOKEN)
     const phoneNumberId = textValue(process.env.WHATSAPP_PHONE_NUMBER_ID)
@@ -45,7 +46,7 @@ export async function POST(request: NextRequest) {
 
     const now = new Date().toISOString()
     const messageId = data?.messages?.[0]?.id || ''
-    await fetch(`${FIREBASE_DATABASE_URL}/whatsappMessages.json`, {
+    const savedMessage = await fetch(`${FIREBASE_DATABASE_URL}/whatsappMessages.json`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -57,6 +58,12 @@ export async function POST(request: NextRequest) {
         status: 'sent',
       }),
     })
+
+    if (!savedMessage.ok) {
+      console.error('[WhatsApp Message] Sent through Meta but local history save failed', {
+        status: savedMessage.status,
+      })
+    }
 
     return NextResponse.json({ success: true, messageId, sentAt: now }, { status: 200 })
   } catch (error) {
