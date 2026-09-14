@@ -80,6 +80,10 @@ const demoConversations: Conversation[] = [
 
 const avatarColors = ['#d9b6c0', '#b6c9df', '#e5c590', '#a9d4c4', '#c6b7d9']
 
+function normalizePhone(value: unknown) {
+  return String(value || '').replace(/\D/g, '').replace(/^0/, '92')
+}
+
 export function AppointmentsDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [recentMessages, setRecentMessages] = useState<WhatsappMessage[]>([])
@@ -278,10 +282,10 @@ export function AppointmentsDashboard() {
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedId) || conversations[0]
   const selectedAppointment = selectedConversation?.appointment
   const selectedIncomingMessages = recentMessages.filter((recentMessage) => {
-    if (!selectedAppointment?.patientPhone) return false
+    if (!selectedAppointment?.patientPhone || recentMessage.direction !== 'inbound') return false
 
-    const messagePhone = recentMessage.from.replace(/\D/g, '').replace(/^0/, '92')
-    const appointmentPhone = selectedAppointment.patientPhone.replace(/\D/g, '').replace(/^0/, '92')
+    const messagePhone = normalizePhone(recentMessage.from)
+    const appointmentPhone = normalizePhone(selectedAppointment.patientPhone)
     return messagePhone === appointmentPhone
   })
   const latestIncomingMessage = selectedIncomingMessages.find((recentMessage) => recentMessage.direction === 'inbound')
@@ -291,8 +295,8 @@ export function AppointmentsDashboard() {
   const selectedOutgoingMessages = recentMessages.filter((recentMessage) => {
     if (!selectedAppointment?.patientPhone || recentMessage.direction !== 'outbound') return false
 
-    const messagePhone = (recentMessage.to || '').replace(/\D/g, '').replace(/^0/, '92')
-    const appointmentPhone = selectedAppointment.patientPhone.replace(/\D/g, '').replace(/^0/, '92')
+    const messagePhone = normalizePhone(recentMessage.to)
+    const appointmentPhone = normalizePhone(selectedAppointment.patientPhone)
     return messagePhone === appointmentPhone
   })
   const selectedSentMessages = localSentMessages.filter(

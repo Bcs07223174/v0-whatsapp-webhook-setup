@@ -252,4 +252,17 @@
   .chat-panel { height: 100vh; }
   .mobile-menu-button { display: inline-grid; }
   .chat-body { padding-right: 7%; padding-left: 7%; }
+  .message-window-banner { align-items: flex-start; flex-direction: column; gap: 3px; padding: 8px 12px; }
+  .message-window-banner small { text-align: left; }
+  .composer { padding: 9px 10px; }
+  .composer .icon-button { flex: 0 0 30px; width: 30px; height: 30px; }
+  .composer input { min-width: 0; font-size: 12px; }
+  .status-toast { right: 10px; bottom: 10px; left: 10px; }
+}
+
+@media (max-width: 380px) {
+  .chat-header { padding: 0 10px; gap: 7px; }
+  .chat-header-actions .icon-button:nth-child(2) { display: none; }
+  .chat-contact span { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chat-body { padding-right: 4%; padding-left: 4%; }
 }
