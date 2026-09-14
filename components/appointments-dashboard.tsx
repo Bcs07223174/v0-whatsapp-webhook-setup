@@ -53,6 +53,12 @@ interface WhatsappMessage {
   direction: 'inbound' | 'outbound'
 }
 
+interface LocalSentMessage {
+  appointmentId: string
+  text: string
+  sentAt: string
+}
+
 interface Conversation {
   id: string
   name: string
@@ -76,6 +82,7 @@ const avatarColors = ['#d9b6c0', '#b6c9df', '#e5c590', '#a9d4c4', '#c6b7d9']
 export function AppointmentsDashboard() {
   const [appointments, setAppointments] = useState<Appointment[]>([])
   const [recentMessages, setRecentMessages] = useState<WhatsappMessage[]>([])
+  const [localSentMessages, setLocalSentMessages] = useState<LocalSentMessage[]>([])
   const [sendingId, setSendingId] = useState<string | null>(null)
   const [message, setMessage] = useState('')
   const [whatsAppConfigured, setWhatsAppConfigured] = useState(true)
@@ -198,6 +205,15 @@ export function AppointmentsDashboard() {
       if (response.ok) {
         const deliveredPhone = data.phone || phoneToSend
 
+        setLocalSentMessages((current) => [
+          ...current,
+          {
+            appointmentId: appointment.appointmentId,
+            text: 'Your appointment is confirmed. See you soon!',
+            sentAt: new Date().toISOString(),
+          },
+        ])
+
         setMessage(
           `WhatsApp appointment template accepted for ${appointment.patientName} at ${deliveredPhone}.`
         )
@@ -260,6 +276,16 @@ export function AppointmentsDashboard() {
 
   const selectedConversation = conversations.find((conversation) => conversation.id === selectedId) || conversations[0]
   const selectedAppointment = selectedConversation?.appointment
+  const selectedIncomingMessages = recentMessages.filter((recentMessage) => {
+    if (!selectedAppointment?.patientPhone) return false
+
+    const messagePhone = recentMessage.from.replace(/\D/g, '').replace(/^0/, '92')
+    const appointmentPhone = selectedAppointment.patientPhone.replace(/\D/g, '').replace(/^0/, '92')
+    return messagePhone === appointmentPhone
+  })
+  const selectedSentMessages = localSentMessages.filter(
+    (sentMessage) => sentMessage.appointmentId === selectedAppointment?.appointmentId,
+  )
   const filteredConversations = conversations.filter((conversation) =>
     `${conversation.name} ${conversation.phone}`.toLowerCase().includes(search.toLowerCase()),
   )
@@ -312,7 +338,9 @@ export function AppointmentsDashboard() {
             {selectedAppointment ? <>
               <div className="message-bubble incoming"><p>Hi, I&apos;d like to confirm my appointment details.</p><time>{selectedAppointment.appointmentTime || '10:30 AM'}</time></div>
               <div className="message-bubble outgoing"><div className="appointment-card"><div className="appointment-icon"><FileText size={18} /></div><div><b>Appointment reminder</b><span>{selectedAppointment.appointmentDate} at {selectedAppointment.appointmentTime}</span><small>with {selectedAppointment.doctorName}</small></div></div><time>10:32 AM <CheckCheck size={14} /></time></div>
-              {selectedAppointment.whatsappStatus === 'sent' && <div className="message-bubble outgoing compact">Your appointment is confirmed. See you soon!<time>10:33 AM <CheckCheck size={14} /></time></div>}
+              {selectedAppointment.whatsappStatus === 'sent' && selectedSentMessages.length === 0 && <div className="message-bubble outgoing compact">Your appointment is confirmed. See you soon!<time>10:33 AM <CheckCheck size={14} /></time></div>}
+              {selectedSentMessages.map((sentMessage) => <div className="message-bubble outgoing compact" key={sentMessage.sentAt}>{sentMessage.text}<time>{new Date(sentMessage.sentAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })} <CheckCheck size={14} /></time></div>)}
+              {selectedIncomingMessages.map((incomingMessage) => <div className="message-bubble incoming" key={incomingMessage.id}>{incomingMessage.text}<time>{new Date(incomingMessage.receivedAt).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</time></div>)}
             </> : <>
               <div className="message-bubble incoming">Hi! I&apos;d like to know more about my upcoming visit.<time>10:24 AM</time></div>
               <div className="message-bubble outgoing">Absolutely. I have your appointment details ready below.<time>10:25 AM <CheckCheck size={14} /></time></div>
